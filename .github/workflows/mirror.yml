@@ -1,0 +1,42 @@
+# Runs mirror.sh on GitHub's servers and commits the result, for when the
+# machine you'd install on can't reach pkgs.tailscale.com. Start it from the
+# Actions tab: Mirror > Run workflow.
+name: Mirror
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "stable, unstable, or a version like 1.88.4"
+        default: stable
+      arches:
+        description: "Space-separated: amd64 arm64 x86 (blank for all)"
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download MSIs
+        env:
+          TARGET: ${{ inputs.target }}
+          ARCHES: ${{ inputs.arches }}
+        run: ./mirror.sh "$TARGET" $ARCHES
+      - name: Commit and push
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add releases
+          if git diff --cached --quiet; then
+            echo "Nothing new to mirror."
+            exit 0
+          fi
+          version=$(cat "releases/$TARGET" 2>/dev/null || echo "$TARGET")
+          git commit -m "Mirror Tailscale $version"
+          git push
